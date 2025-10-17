@@ -1,99 +1,83 @@
-% MATLAB Simulation of Two Independent Laser Patterns from Speakers
-%
-% This script simulates two separate Lissajous figures on a clean,
-% full-screen "canvas" to mimic a laser projection.
+clear;  % Clear workspace variables
+clc;    % Clear command window
+close all; % Close all figures
 
-% --- Simulation Setup ---
-% Clear workspace, command window, and close all figures
-clear;
-clc;
-close all;
+%% --- 1. Define System Parameters ---
+f_x_nat = 10.0;  % Natural frequency in X-direction (Hz)
+f_y_nat = 12.0;  % Natural frequency in Y-direction (Hz)
+zeta_x = 0.1;    % Damping ratio in X-direction (dimensionless)
+zeta_y = 0.1;    % Damping ratio in Y-direction (dimensionless)
 
-% --- Parameters for Laser 1 ---
-% To create a slowly rotating (oscillating) ellipse, set f_x1 and f_y1
-% to be very close to each other.
-f_x1 = 60;       % Base frequency for X-axis (Hz)
-f_y1 = 60.1;     % Slightly different Y-axis frequency causes rotation
-A_x1 = 1;        % Amplitude for X-axis motion (width)
-A_y1 = 1;        % Amplitude for Y-axis motion (height)
-delta1 = pi / 2; % Phase difference (radians) - pi/2 creates a clear ellipse
-offsetX1 = -1.5; % Horizontal position offset
-offsetY1 = 0;    % Vertical position offset
+F0_over_m = 1.0; % Normalized driving force amplitude (F_0 / m)
 
-% --- Parameters for Laser 2 ---
-% A higher base frequency will make the laser dot move faster.
-f_x2 = 90;       % Base frequency for X-axis (Hz)
-f_y2 = 90.2;     % Slightly different Y-axis frequency causes rotation
-A_x2 = 0.8;      % Amplitude for X-axis motion
-A_y2 = 0.8;      % Amplitude for Y-axis motion
-delta2 = pi / 2; % Phase difference (radians)
-offsetX2 = 1.5;  % Horizontal position offset
-offsetY2 = 0;    % Vertical position offset
+% --- Convert to angular frequencies (rad/s) ---
+w_x_nat = 2 * pi * f_x_nat;
+w_y_nat = 2 * pi * f_y_nat;
 
-% --- Animation and Time Parameters ---
-simulation_time = 15;   % Increased duration for a longer animation.
-time_step = 0.001;      % Time step for the simulation (smaller is smoother).
-t = 0:time_step:simulation_time; % Time vector.
-tail_length = 200;      % NEW: Number of points in the laser's "tail".
+%% --- 2. Simulation Loop ---
+while true
+    %% --- 3. Get User Input ---
+    prompt = '\nEnter speaker driving frequency in Hz (e.g., 8, 10, 11, 12, 15) or "q" to quit: ';
+    f_drive_str = input(prompt, 's');
 
-% --- Generate the Laser Path Coordinates ---
-% Calculate paths for both lasers, including their offsets.
-x_path1 = A_x1 * sin(2 * pi * f_x1 * t) + offsetX1;
-y_path1 = A_y1 * sin(2 * pi * f_y1 * t + delta1) + offsetY1;
+    if strcmpi(f_drive_str, 'q')
+        break;
+    end
 
-x_path2 = A_x2 * sin(2 * pi * f_x2 * t) + offsetX2;
-y_path2 = A_y2 * sin(2 * pi * f_y2 * t + delta2) + offsetY2;
+    f_drive = str2double(f_drive_str);
 
+    if isnan(f_drive) || f_drive <= 0
+        disp('Invalid input. Please enter a positive number or "q".');
+        continue;
+    end
 
-% --- Animate the Simulation ---
-% Create a new figure for the animation. This will be our "canvas".
-% It is set to be borderless, black, and fullscreen.
-figure('Name', 'Laser Projection Canvas', ...
-       'NumberTitle', 'off', ...
-       'MenuBar', 'none', ...
-       'ToolBar', 'none', ...
-       'Color', 'k', ...
-       'WindowState', 'fullscreen');
+    w_drive = 2 * pi * f_drive;
 
-% Create axes that fill the entire figure
-ax = gca;
-ax.Position = [0 0 1 1]; % Make axes fill the entire figure window.
-ax.Color = 'k'; % Set axes background to black.
+    %% --- 4. Calculate Steady-State Response ---
+    A_x = F0_over_m / sqrt((w_x_nat^2 - w_drive^2)^2 + (2 * zeta_x * w_x_nat * w_drive)^2);
+    A_y = F0_over_m / sqrt((w_y_nat^2 - w_drive^2)^2 + (2 * zeta_y * w_y_nat * w_drive)^2);
 
-% Hide all plot decorations (axes, ticks, labels) for a clean canvas look.
-ax.Visible = 'off';
+    phi_x = atan2(2 * zeta_x * w_x_nat * w_drive, w_x_nat^2 - w_drive^2);
+    phi_y = atan2(2 * zeta_y * w_y_nat * w_drive, w_y_nat^2 - w_drive^2);
 
-% Set the plot limits and maintain the aspect ratio. This is important
-% for the shapes to appear correctly, even though the axes are not visible.
-axis([-3, 3, -1.5, 1.5]);
-axis equal;
+    phase_diff_deg = (phi_y - phi_x) * 180/pi;
 
-hold on;
+    %% --- 5. Generate Waveform for Plotting ---
+    T_period = 1 / f_drive;
+    t = linspace(0, 3 * T_period, 1000);
 
-% Create animated line objects for both laser trails.
-laser_trail1 = animatedline('Color', '#00FF00', 'LineWidth', 2); % Bright green, slightly thicker
-laser_trail2 = animatedline('Color', '#00FF00', 'LineWidth', 2); % Bright green, slightly thicker
+    x_t = A_x * cos(w_drive * t - phi_x);
+    y_t = A_y * cos(w_drive * t - phi_y);
 
-% --- Animation Loop ---
-% Loop through each point in time to draw the animation.
-% This loop now clears the previous trail and draws only a short segment,
-% creating a "tail" effect.
-for i = 1:length(t)
-    % Clear the points from the previous frame
-    clearpoints(laser_trail1);
-    clearpoints(laser_trail2);
+    %% --- 6. Plot the Result ---
+    figure(1);
+    clf;
+    
+    plot(x_t, y_t, 'r', 'LineWidth', 2);
+    
+    grid on;
+    axis equal;
 
-    % Determine the start index for the tail segment
-    start_index = max(1, i - tail_length);
+    % --- NEW / MODIFIED ZOOM LOGIC ---
+    % Calculate the maximum extent needed for the current ellipse
+    % This ensures the plot always fits the ellipse and "zooms in" or "out" as needed.
+    current_max_extent = max(abs([A_x, A_y])) * 1.1; % Add a 10% buffer
+    if current_max_extent == 0 % Avoid division by zero if both amplitudes are zero
+        current_max_extent = 0.1; % A small default extent
+    end
+    xlim([-current_max_extent, current_max_extent]);
+    ylim([-current_max_extent, current_max_extent]);
+    % --- END NEW / MODIFIED ZOOM LOGIC ---
 
-    % Add only the most recent segment of points to the animated line
-    addpoints(laser_trail1, x_path1(start_index:i), y_path1(start_index:i));
-    addpoints(laser_trail2, x_path2(start_index:i), y_path2(start_index:i));
+    xlabel('X Position (arbitrary units)');
+    ylabel('Y Position (arbitrary units)');
+    
+    title_str = sprintf('Laser Projection at %.2f Hz', f_drive);
+    subtitle_str = sprintf('Phase Difference: %.1f° | Amplitudes: [X=%.2f, Y=%.2f]', ...
+                           phase_diff_deg, A_x, A_y);
+    title({title_str, subtitle_str});
 
-    % 'drawnow' updates the figure window with the latest changes.
-    % Using 'limitrate' is crucial for a smooth animation.
-    drawnow limitrate;
+    drawnow;
 end
 
-hold off;
-
+disp('Simulation ended.');
