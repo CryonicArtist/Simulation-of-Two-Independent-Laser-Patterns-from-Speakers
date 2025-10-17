@@ -1,5 +1,5 @@
-function laser_speaker_slider()
-    % Main function to create the GUI for the laser speaker simulation
+function live_laser_sim()
+    % Main function to create the GUI and run the live animation
     
     clear;      % Clear workspace variables
     clc;        % Clear command window
@@ -8,39 +8,51 @@ function laser_speaker_slider()
     %% --- 1. Define System Parameters ---
     f_x_nat = 10.0;  % Natural frequency in X-direction (Hz)
     f_y_nat = 12.0;  % Natural frequency in Y-direction (Hz)
-    zeta_x = 0.1;    % Damping ratio in X-direction (dimensionless)
-    zeta_y = 0.1;    % Damping ratio in Y-direction (dimensionless)
+    zeta_x = 0.1;    % Damping ratio in X-direction
+    zeta_y = 0.1;    % Damping ratio in Y-direction
+    F0_over_m = 1.0; % Normalized driving force amplitude
 
-    F0_over_m = 1.0; % Normalized driving force amplitude (F_0 / m)
-
-    % --- Convert to angular frequencies (rad/s) ---
     w_x_nat = 2 * pi * f_x_nat;
     w_y_nat = 2 * pi * f_y_nat;
 
-    % --- Define Slider Frequency Range ---
-    f_min = 1.0;   % Minimum frequency on the slider (Hz)
-    f_max = 20.0;  % Maximum frequency on the slider (Hz)
-    f_start = f_x_nat; % Initial slider position (Hz)
+    % --- Slider Frequency Range ---
+    f_min = 1.0;   
+    f_max = 20.0;  
+    f_start = f_x_nat; 
 
     %% --- 2. Create the GUI Elements ---
-    hFig = figure('Name', 'Laser Speaker Simulation (Normalized)', ...
+    hFig = figure('Name', 'Live Laser Simulation', ...
                   'Position', [200, 200, 600, 700], ...
-                  'NumberTitle', 'off');
+                  'NumberTitle', 'off', ...
+                  'DeleteFcn', @onFigClose); % Add a close function
 
     hAx = axes('Parent', hFig, ...
                'Position', [0.15, 0.25, 0.75, 0.7]);
     
-    hPlot = plot(hAx, NaN, NaN, 'r', 'LineWidth', 2);
+    % --- Create Plot Handles ---
+    % hTrail: The "ghost" path of the full ellipse
+    hTrail = plot(hAx, NaN, NaN, 'LineWidth', 1, 'Color', [0.5 0.5 0.5]); % Gray
+    hold(hAx, 'on');
+    % hDot: The "live" laser dot
+    hDot = plot(hAx, NaN, NaN, 'r.', 'MarkerSize', 30); % Red dot
+    hold(hAx, 'off');
     
     grid(hAx, 'on');
     axis(hAx, 'equal');
     xlabel(hAx, 'X Position (Normalized)');
     ylabel(hAx, 'Y Position (Normalized)');
-
+    
+    % --- Set STATIC Axis Limits (for normalized display) ---
+    axis_limit = 1.1;
+    xlim(hAx, [-axis_limit, axis_limit]);
+    ylim(hAx, [-axis_limit, axis_limit]);
+    
+    % --- GUI Controls (Slider and Text) ---
     hSlider = uicontrol('Parent', hFig, ...
                         'Style', 'slider', ...
                         'Min', f_min, 'Max', f_max, 'Value', f_start, ...
-                        'Position', [100, 50, 400, 20]);
+                        'Position', [100, 50, 400, 20], ...
+                        'Callback', @updatePhysics); % Slider calls updatePhysics
 
     uicontrol('Parent', hFig, ...
               'Style', 'text', ...
@@ -55,79 +67,110 @@ function laser_speaker_slider()
                           'HorizontalAlignment', 'left', ...
                           'FontWeight', 'bold');
 
-    %% --- 3. Link Slider to Callback Function ---
-    addlistener(hSlider, 'ContinuousValueChange', @updatePlot);
+    %% --- 3. Animation Loop Setup ---
+    
+    % Use a structure to hold the physics state
+    % This is how the callback function will pass data to the main loop
+    simState = struct();
+    simState.run = true; % Loop control flag
+    
+    % We store 'simState' in the figure's 'UserData'
+    % This makes it accessible from anywhere
+    set(hFig, 'UserData', simState);
+    
+    % Run the physics calculation once to initialize
+    updatePhysics(hSlider);
+    
+    % --- Main Animation Loop ---
+    t = 0;           % Master simulation time
+    dt = 0.002;      % Time step (controls dot speed)
+    
+    while simState.run
+        % Check if the figure window still exists
+        if ~ishandle(hFig)
+            break;
+        end
+        
+        % Get the physics state (set by the slider callback)
+        simState = get(hFig, 'UserData');
+        
+        % Calculate the dot's CURRENT position
+        x_dot = simState.Ax_norm * cos(simState.w_drive * t - simState.phi_x);
+        y_dot = simState.Ay_norm * cos(simState.w_drive * t - simState.phi_y);
+        
+        % Update the dot's XData and YData
+        set(hDot, 'XData', x_dot, 'YData', y_dot);
+        
+        % Increment time
+        t = t + dt;
+        
+        % Refresh the plot
+        % 'limitrate' is better for animation than plain 'drawnow'
+        drawnow limitrate; 
+    end
+    
+    %% --- 4. Nested Callback Functions ---
 
-    %% --- 4. Call the update function once to draw the initial plot ---
-    updatePlot(hSlider); 
-
-    %% --- 5. Nested Callback Function ---
-    function updatePlot(sliderObj, ~)
-        % Get the current frequency from the slider
-        f_drive = sliderObj.Value;
+    function updatePhysics(sliderObj, ~)
+        % This function is called ONLY when the slider is moved.
+        % It calculates the ellipse shape and updates the "trail".
+        
+        % Get current state and frequency
+        simState = get(hFig, 'UserData');
+        f_drive = get(sliderObj, 'Value');
         w_drive = 2 * pi * f_drive;
 
-        % --- Calculate PHYSICAL Steady-State Response ---
-        % (We temporarily store these as 'phys' to normalize them)
+        % --- Calculate PHYSICAL Amplitudes & Phases ---
         A_x_phys = F0_over_m / sqrt((w_x_nat^2 - w_drive^2)^2 + (2 * zeta_x * w_x_nat * w_drive)^2);
         A_y_phys = F0_over_m / sqrt((w_y_nat^2 - w_drive^2)^2 + (2 * zeta_y * w_y_nat * w_drive)^2);
-        
         phi_x = atan2(2 * zeta_x * w_x_nat * w_drive, w_x_nat^2 - w_drive^2);
         phi_y = atan2(2 * zeta_y * w_y_nat * w_drive, w_y_nat^2 - w_drive^2);
         
-        phase_diff_deg = (phi_y - phi_x) * 180/pi;
-
-        % --- *** NEW: NORMALIZE AMPLITUDES *** ---
-        % Find the largest physical amplitude
+        % --- Normalize for Plotting ---
         max_phys_amp = max(abs([A_x_phys, A_y_phys]));
+        if max_phys_amp < 1e-9, max_phys_amp = 1.0; end
         
-        % Avoid division by zero if frequencies are far off
-        if max_phys_amp < 1e-9 
-            max_phys_amp = 1e-9;
-        end
-        
-        % Set the PLOTTING amplitudes by dividing by the max.
-        % This forces the largest amplitude to be 1.0,
-        % but preserves the ratio A_x / A_y (which defines the shape).
-        A_x = A_x_phys / max_phys_amp;
-        A_y = A_y_phys / max_phys_amp;
-        % --- *** END OF NEW CODE *** ---
-        
-        % --- Generate Waveform ---
+        A_x_norm = A_x_phys / max_phys_amp;
+        A_y_norm = A_y_phys / max_phys_amp;
+
+        % --- Calculate the "Trail" (the full ellipse path) ---
         T_period = 1 / f_drive;
-        t = linspace(0, 3 * T_period, 1000); 
-
-        x_t = A_x * cos(w_drive * t - phi_x);
-        y_t = A_y * cos(w_drive * t - phi_y);
-
-        % --- Update Plot Data (Fast!) ---
-        set(hPlot, 'XData', x_t, 'YData', y_t);
-
-        % --- *** MODIFIED: Use STATIC Axis Limits *** ---
-        % Since the max amplitude is now always 1.0,
-        % we can use a fixed "static" display.
-        axis_limit = 1.1; % 10% buffer
-        xlim(hAx, [-axis_limit, axis_limit]);
-        ylim(hAx, [-axis_limit, axis_limit]);
-        % --- *** END OF MODIFIED CODE *** ---
+        t_trail = linspace(0, T_period, 500); % 1 full cycle is enough
         
-        % --- Update Titles and Labels ---
-        % We will display the NORMALIZED amplitudes [A_x, A_y]
-        % but also show the PHYSICAL amplitudes [A_x_phys, A_y_phys]
-        % to understand what's "really" happening.
+        x_trail = A_x_norm * cos(w_drive * t_trail - phi_x);
+        y_trail = A_y_norm * cos(w_drive * t_trail - phi_y);
         
-        title_str = sprintf('Laser Projection at %.2f Hz', f_drive);
+        % --- Update the "Trail" plot ---
+        set(hTrail, 'XData', x_trail, 'YData', y_trail);
         
-        % Show the normalized (plot) ratio
-        shape_str = sprintf('Normalized Shape (Ratio): [X=%.2f, Y=%.2f]', A_x, A_y);
-        
-        % Show the physical amplitudes
-        phys_str = sprintf('Physical Amps: [X=%.3f, Y=%.3f] | Phase: %.1f°', ...
-                           A_x_phys, A_y_phys, phase_diff_deg);
-                           
-        title(hAx, {title_str, shape_str, phys_str});
-        
+        % --- Update Titles and Text ---
         set(hFreqText, 'String', sprintf('%.2f Hz', f_drive));
+        phase_diff_deg = (phi_y - phi_x) * 180/pi;
+        title_str = sprintf('Laser Projection at %.2f Hz', f_drive);
+        shape_str = sprintf('Normalized Shape (Ratio): [X=%.2f, Y=%.2f] | Phase: %.1f°', ...
+                           A_x_norm, A_y_norm, phase_diff_deg);
+        title(hAx, {title_str, shape_str});
+
+        % --- Save updated state for the animation loop ---
+        simState.w_drive = w_drive;
+        simState.Ax_norm = A_x_norm;
+        simState.Ay_norm = A_y_norm;
+        simState.phi_x = phi_x;
+        simState.phi_y = phi_y;
+        set(hFig, 'UserData', simState);
+    end
+
+    function onFigClose(~, ~)
+        % This function is called when the user closes the figure window.
+        % It sets the 'run' flag to false, stopping the while loop.
+        try
+            simState = get(hFig, 'UserData');
+            simState.run = false;
+            set(hFig, 'UserData', simState);
+        catch
+            % Figure may already be gone, just exit
+        end
+        disp('Simulation stopped.');
     end
 
 end
