@@ -1,4 +1,4 @@
-function live_laser_sim_persistence()
+function live_multi_slider_sim()
     % Main function to create the GUI and run the live animation
     
     clear;      % Clear workspace variables
@@ -8,38 +8,41 @@ function live_laser_sim_persistence()
     %% --- 1. Define System Parameters ---
     f_x_nat = 10.0;  % Natural frequency in X-direction (Hz)
     f_y_nat = 12.0;  % Natural frequency in Y-direction (Hz)
-    zeta_x = 0.1;    % Damping ratio in X-direction
-    zeta_y = 0.1;    % Damping ratio in Y-direction
+    zeta_x = 0.05;   % Damping ratio in X (Made smaller for sharper peaks)
+    zeta_y = 0.05;   % Damping ratio in Y (Made smaller for sharper peaks)
     F0_over_m = 1.0; % Normalized driving force amplitude
 
     w_x_nat = 2 * pi * f_x_nat;
     w_y_nat = 2 * pi * f_y_nat;
-
-    % --- Slider Frequency Range ---
-    f_min = 1.0;   
-    f_max = 20.0;  
-    f_start = f_x_nat; 
     
-    % --- Persistence Slider Range ---
-    p_min = 1;     % Min trail length (1 point = dot)
-    p_max = 500;   % Max trail length (500 points = full ellipse)
-    p_start = 50;  % Default trail length
-
+    % --- Slider Ranges ---
+    f_min = 0.0;     % 0 Hz will mean "off"
+    f_max = 20.0;    
+    p_min = 1;       % Min trail length (1 point = dot)
+    p_max = 500;     % Max trail length (500 points)
+    
+    % --- Initial Frequencies ---
+    f_start_1 = 10.0;
+    f_start_2 = 12.0;
+    f_start_3 = 0.0; % Off by default
+    
+    % --- Simulation Time Parameters ---
+    T_sim_trail = 5.0;  % Total time to pre-calculate for the gray trail (s)
+    N_points_trail = 20000; % Number of points for the gray trail
+    
     %% --- 2. Create the GUI Elements ---
-    hFig = figure('Name', 'Live Laser Simulation', ...
-                  'Position', [200, 100, 600, 800], ... % Made figure taller
+    hFig = figure('Name', 'Live Multi-Slider Simulation', ...
+                  'Position', [200, 100, 600, 900], ... % Very tall figure
                   'NumberTitle', 'off', ...
                   'DeleteFcn', @onFigClose); 
 
-    % --- Plot Axes (moved up) ---
     hAx = axes('Parent', hFig, ...
-               'Position', [0.15, 0.30, 0.75, 0.65]);
+               'Position', [0.15, 0.40, 0.75, 0.55]); % Plot at the top
     
     % --- Create Plot Handles ---
     hTrail = plot(hAx, NaN, NaN, 'LineWidth', 1, 'Color', [0.5 0.5 0.5]); % Gray
     hold(hAx, 'on');
-    % hDot is now the "trail" or "comet"
-    hDot = plot(hAx, NaN, NaN, 'r', 'LineWidth', 3); % Thicker red line
+    hDot = plot(hAx, NaN, NaN, 'r', 'LineWidth', 3); % Red trail
     hold(hAx, 'off');
     
     grid(hAx, 'on');
@@ -52,65 +55,59 @@ function live_laser_sim_persistence()
     xlim(hAx, [-axis_limit, axis_limit]);
     ylim(hAx, [-axis_limit, axis_limit]);
     
-    % --- Frequency Slider (moved up) ---
-    uicontrol('Parent', hFig, ...
-              'Style', 'text', ...
-              'String', 'Driving Frequency (Hz):', ...
-              'Position', [100, 140, 150, 20], ...
-              'HorizontalAlignment', 'left');
+    % --- GUI Controls (3 Freq Sliders + 1 Persistence Slider) ---
+    
+    % --- Frequency Slider 1 ---
+    uicontrol('Parent', hFig, 'Style', 'text', 'String', 'Frequency 1 (0=Off):', ...
+              'Position', [100, 300, 150, 20], 'HorizontalAlignment', 'left');
+    hFreqText1 = uicontrol('Parent', hFig, 'Style', 'text', 'String', sprintf('%.2f Hz', f_start_1), ...
+                           'Position', [250, 300, 100, 20], 'HorizontalAlignment', 'left', 'FontWeight', 'bold');
+    hFreqSlider1 = uicontrol('Parent', hFig, 'Style', 'slider', 'Min', f_min, 'Max', f_max, 'Value', f_start_1, ...
+                             'Position', [100, 270, 400, 20], 'Callback', @updatePhysics);
 
-    hFreqText = uicontrol('Parent', hFig, ...
-                          'Style', 'text', ...
-                          'String', sprintf('%.2f Hz', f_start), ...
-                          'Position', [250, 140, 100, 20], ...
-                          'HorizontalAlignment', 'left', ...
-                          'FontWeight', 'bold');
-                          
-    hSlider = uicontrol('Parent', hFig, ...
-                        'Style', 'slider', ...
-                        'Min', f_min, 'Max', f_max, 'Value', f_start, ...
-                        'Position', [100, 110, 400, 20], ...
-                        'Callback', @updatePhysics);
+    % --- Frequency Slider 2 ---
+    uicontrol('Parent', hFig, 'Style', 'text', 'String', 'Frequency 2 (0=Off):', ...
+              'Position', [100, 240, 150, 20], 'HorizontalAlignment', 'left');
+    hFreqText2 = uicontrol('Parent', hFig, 'Style', 'text', 'String', sprintf('%.2f Hz', f_start_2), ...
+                           'Position', [250, 240, 100, 20], 'HorizontalAlignment', 'left', 'FontWeight', 'bold');
+    hFreqSlider2 = uicontrol('Parent', hFig, 'Style', 'slider', 'Min', f_min, 'Max', f_max, 'Value', f_start_2, ...
+                             'Position', [100, 210, 400, 20], 'Callback', @updatePhysics);
+                             
+    % --- Frequency Slider 3 ---
+    uicontrol('Parent', hFig, 'Style', 'text', 'String', 'Frequency 3 (0=Off):', ...
+              'Position', [100, 180, 150, 20], 'HorizontalAlignment', 'left');
+    hFreqText3 = uicontrol('Parent', hFig, 'Style', 'text', 'String', sprintf('%.2f Hz', f_start_3), ...
+                           'Position', [250, 180, 100, 20], 'HorizontalAlignment', 'left', 'FontWeight', 'bold');
+    hFreqSlider3 = uicontrol('Parent', hFig, 'Style', 'slider', 'Min', f_min, 'Max', f_max, 'Value', f_start_3, ...
+                             'Position', [100, 150, 400, 20], 'Callback', @updatePhysics);
 
-    % --- NEW: Persistence Slider ---
-    uicontrol('Parent', hFig, ...
-              'Style', 'text', ...
-              'String', 'Persistence (Trail Length):', ...
-              'Position', [100, 80, 160, 20], ...
-              'HorizontalAlignment', 'left');
-              
-    hPersistenceText = uicontrol('Parent', hFig, ...
-                                 'Style', 'text', ...
-                                 'String', sprintf('%d points', p_start), ...
-                                 'Position', [260, 80, 100, 20], ...
-                                 'HorizontalAlignment', 'left', ...
-                                 'FontWeight', 'bold');
-
-    hPersistenceSlider = uicontrol('Parent', hFig, ...
-                                   'Style', 'slider', ...
-                                   'Min', p_min, 'Max', p_max, 'Value', p_start, ...
-                                   'Position', [100, 50, 400, 20], ...
-                                   'Callback', @updatePersistenceText); % Updates text
+    % --- Persistence Slider ---
+    uicontrol('Parent', hFig, 'Style', 'text', 'String', 'Persistence (Trail Length):', ...
+              'Position', [100, 80, 160, 20], 'HorizontalAlignment', 'left');
+    hPersistenceText = uicontrol('Parent', hFig, 'Style', 'text', 'String', sprintf('%d points', p_max/2), ...
+                                 'Position', [260, 80, 100, 20], 'HorizontalAlignment', 'left', 'FontWeight', 'bold');
+    hPersistenceSlider = uicontrol('Parent', hFig, 'Style', 'slider', 'Min', p_min, 'Max', p_max, 'Value', p_max/2, ...
+                                   'Position', [100, 50, 400, 20], 'Callback', @updatePersistenceText); 
 
     %% --- 3. Animation Loop Setup ---
     
-    % Use a structure to hold the physics state
     simState = struct();
     simState.run = true; % Loop control flag
-    simState.x_history = []; % NEW: Stores the dot's trail
-    simState.y_history = []; % NEW: Stores the dot's trail
+    simState.x_history = []; % Stores the dot's trail
+    simState.y_history = [];
+    simState.freq_params = {}; % Will store physics for each freq
+    simState.max_extent = 1.0; % Normalization factor
     
     set(hFig, 'UserData', simState);
     
     % Run the physics calculation once to initialize
-    updatePhysics(hSlider);
+    updatePhysics();
     
     % --- Main Animation Loop ---
     t = 0;           % Master simulation time
-    dt = 0.002;      % Time step (controls dot speed)
+    dt = 0.0005;     % Time step (needs to be smaller for complex shapes)
     
     while true
-        % Check if the figure window still exists or run flag is false
         if ~ishandle(hFig)
             break;
         end
@@ -119,87 +116,113 @@ function live_laser_sim_persistence()
             break;
         end
         
-        % --- NEW: Get persistence length from slider ---
         persistence_length = round(get(hPersistenceSlider, 'Value'));
         
-        % Calculate the dot's CURRENT position
-        x_dot = simState.Ax_norm * cos(simState.w_drive * t - simState.phi_x);
-        y_dot = simState.Ay_norm * cos(simState.w_drive * t - simState.phi_y);
+        % --- Calculate Dot's CURRENT Position (Superposition) ---
+        x_dot_phys = 0;
+        y_dot_phys = 0;
         
-        % --- NEW: Update the history buffer ---
-        % Add new point
+        for k = 1:length(simState.freq_params)
+            params = simState.freq_params{k};
+            x_dot_phys = x_dot_phys + params.Ax_phys * cos(params.w_drive * t - params.phi_x);
+            y_dot_phys = y_dot_phys + params.Ay_phys * cos(params.w_drive * t - params.phi_y);
+        end
+        
+        % --- Normalize ---
+        x_dot = x_dot_phys / simState.max_extent;
+        y_dot = y_dot_phys / simState.max_extent;
+        
+        % --- Update history buffer ---
         simState.x_history = [simState.x_history, x_dot];
         simState.y_history = [simState.y_history, y_dot];
         
-        % Trim history to the persistence length
         if length(simState.x_history) > persistence_length
             simState.x_history = simState.x_history(end-persistence_length+1:end);
             simState.y_history = simState.y_history(end-persistence_length+1:end);
         end
         
-        % Update the dot's XData and YData with the *entire trail*
         set(hDot, 'XData', simState.x_history, 'YData', simState.y_history);
-        
-        % Increment time
         t = t + dt;
-        
-        % Refresh the plot
         drawnow limitrate;
-        
-        % Put the state back (with updated history)
         set(hFig, 'UserData', simState);
     end
     
     %% --- 4. Nested Callback Functions ---
 
-    function updatePhysics(sliderObj, ~)
-        % Called when the FREQUENCY slider is moved.
+    function updatePhysics(~, ~)
+        % Called when ANY frequency slider is moved.
         
         simState = get(hFig, 'UserData');
-        f_drive = get(sliderObj, 'Value');
-        w_drive = 2 * pi * f_drive;
-
-        % --- Calculate PHYSICAL Amplitudes & Phases ---
-        A_x_phys = F0_over_m / sqrt((w_x_nat^2 - w_drive^2)^2 + (2 * zeta_x * w_x_nat * w_drive)^2);
-        A_y_phys = F0_over_m / sqrt((w_y_nat^2 - w_drive^2)^2 + (2 * zeta_y * w_y_nat * w_drive)^2);
-        phi_x = atan2(2 * zeta_x * w_x_nat * w_drive, w_x_nat^2 - w_drive^2);
-        phi_y = atan2(2 * zeta_y * w_y_nat * w_drive, w_y_nat^2 - w_drive^2);
         
-        % --- Normalize for Plotting ---
-        max_phys_amp = max(abs([A_x_phys, A_y_phys]));
-        if max_phys_amp < 1e-9, max_phys_amp = 1.0; end
+        % --- Get Frequencies from ALL sliders ---
+        f1 = get(hFreqSlider1, 'Value');
+        f2 = get(hFreqSlider2, 'Value');
+        f3 = get(hFreqSlider3, 'Value');
         
-        A_x_norm = A_x_phys / max_phys_amp;
-        A_y_norm = A_y_phys / max_phys_amp;
-
-        % --- Calculate the "Trail" (the full ellipse path) ---
-        T_period = 1 / f_drive;
-        t_trail = linspace(0, T_period, 500); 
-        x_trail = A_x_norm * cos(w_drive * t_trail - phi_x);
-        y_trail = A_y_norm * cos(w_drive * t_trail - phi_y);
+        % --- Update text labels ---
+        set(hFreqText1, 'String', sprintf('%.2f Hz', f1));
+        set(hFreqText2, 'String', sprintf('%.2f Hz', f2));
+        set(hFreqText3, 'String', sprintf('%.2f Hz', f3));
         
-        set(hTrail, 'XData', x_trail, 'YData', y_trail);
+        % --- Build the list of active frequencies ---
+        f_drives = [f1, f2, f3];
+        f_drives(f_drives <= 0) = []; % Remove all frequencies <= 0
         
-        % --- Update Titles and Text ---
-        set(hFreqText, 'String', sprintf('%.2f Hz', f_drive));
-        phase_diff_deg = (phi_y - phi_x) * 180/pi;
-        title_str = sprintf('Laser Projection at %.2f Hz', f_drive);
-        shape_str = sprintf('Normalized Shape (Ratio): [X=%.2f, Y=%.2f] | Phase: %.1f°', ...
-                           A_x_norm, A_y_norm, phase_diff_deg);
-        title(hAx, {title_str, shape_str});
-
-        % --- Save updated state for the animation loop ---
-        simState.w_drive = w_drive;
-        simState.Ax_norm = A_x_norm;
-        simState.Ay_norm = A_y_norm;
-        simState.phi_x = phi_x;
-        simState.phi_y = phi_y;
+        if isempty(f_drives)
+            % If all sliders are at 0, clear the plot
+            set(hTrail, 'XData', NaN, 'YData', NaN);
+            simState.freq_params = {};
+            simState.x_history = [];
+            simState.y_history = [];
+            title(hAx, 'Set a frequency above 0 Hz');
+            set(hFig, 'UserData', simState);
+            return;
+        end
         
-        % --- NEW: Clear the history buffer ---
-        % Since the shape changed, the old trail is invalid
+        % --- Calculate Physics for Each Active Frequency ---
+        simState.freq_params = {}; % Clear old parameters
+        for f_drive = f_drives
+            w_drive = 2 * pi * f_drive;
+            params = struct();
+            
+            params.w_drive = w_drive;
+            params.Ax_phys = F0_over_m / sqrt((w_x_nat^2 - w_drive^2)^2 + (2 * zeta_x * w_x_nat * w_drive)^2);
+            params.Ay_phys = F0_over_m / sqrt((w_y_nat^2 - w_drive^2)^2 + (2 * zeta_y * w_y_nat * w_drive)^2);
+            params.phi_x = atan2(2 * zeta_x * w_x_nat * w_drive, w_x_nat^2 - w_drive^2);
+            params.phi_y = atan2(2 * zeta_y * w_y_nat * w_drive, w_y_nat^2 - w_drive^2);
+            
+            simState.freq_params{end+1} = params;
+        end
+        
+        % --- Pre-Calculate Full Trail for Normalization ---
+        t_trail_vec = linspace(0, T_sim_trail, N_points_trail);
+        x_trail_total = zeros(1, N_points_trail);
+        y_trail_total = zeros(1, N_points_trail);
+        
+        for k = 1:length(simState.freq_params)
+            params = simState.freq_params{k};
+            x_trail_total = x_trail_total + params.Ax_phys * cos(params.w_drive * t_trail_vec - params.phi_x);
+            y_trail_total = y_trail_total + params.Ay_phys * cos(params.w_drive * t_trail_vec - params.phi_y);
+        end
+        
+        % --- Find Normalization Factor ---
+        simState.max_extent = max(abs([x_trail_total, y_trail_total]));
+        if simState.max_extent < 1e-9, simState.max_extent = 1.0; end
+        
+        % --- Normalize and Plot the Gray "Ghost" Trail ---
+        x_trail_plot = x_trail_total / simState.max_extent;
+        y_trail_plot = y_trail_total / simState.max_extent;
+        set(hTrail, 'XData', x_trail_plot, 'YData', y_trail_plot);
+        
+        % --- Clear History and Update Title ---
         simState.x_history = [];
         simState.y_history = [];
         
+        freq_string = sprintf('%.2f ', f_drives);
+        title_str = ['Active Frequencies: ', freq_string, 'Hz'];
+        title(hAx, {title_str, 'Normalized to fit display'});
+
+        % --- Save updated state for the animation loop ---
         set(hFig, 'UserData', simState);
     end
 
