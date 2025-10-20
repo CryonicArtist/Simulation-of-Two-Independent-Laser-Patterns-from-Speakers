@@ -1,3 +1,24 @@
+% Once the program is running, you can control it with the four sliders.
+
+% 1. The Frequency Sliders (Top Three):
+%   - These control the frequencies played by the "speaker."
+%   - Setting a slider to 0 Hz effectively turns that frequency OFF.
+%   - To see a simple ellipse: Set one slider to a value (like 11 Hz)
+%     and the other two sliders to 0.
+%   - To see complex patterns: Use two or three sliders at once. Try
+%     setting one slider to 10 Hz and another to 12 Hz to see how the
+%     system's resonant frequencies combine.
+%
+% 2. The Persistence Slider (Bottom):
+%   - This slider simulates your "persistence of vision" by changing the
+%     length of the dot's trail.
+%   - Slide to the LEFT (Low Value): This creates a short trail,
+%     making it look like a single dot moving along the path.
+%   - Slide to the RIGHT (High Value): This creates a long trail
+%     that covers the entire path. This makes the shape look solid and
+%     complete, similar to how your eye would perceive a real,
+%     fast-moving laser dot.
+
 function live_multi_slider_sim()
     % Main function to create the GUI and run the live animation
     
